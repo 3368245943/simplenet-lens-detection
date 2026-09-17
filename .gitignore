@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# 训练产物（体积大，不入库）
+results/
+results_smoke/
+visualization/
+test_result/
+误检分析/
+report/
+*.pth
+*.ckpt
+
+# 数据（本地数据集，不入库）
+data/
+
+# 其他
+.DS_Store
+*.log
