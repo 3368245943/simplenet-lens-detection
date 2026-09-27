@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | `v0.1.0` | initial | SimpleNet adaptation | Initial implementation | historical |
 | `v0.2.0` | 2026-09-17 | RGB baseline | AUROC `0.741`, F1 `0.679` | baseline |
-| `v0.3.0` | 2026-09-24 | Sensor-aware RGB / stereo / ToF | Development F1 `0.9298`; scene CV F1 `0.9107` | release candidate |
+| `v0.3.0` | 2026-09-24 | Sensor-aware RGB / stereo / ToF | User-confirmed usable version; development F1 `0.9298`, scene CV F1 `0.9107` | confirmed usable; fresh-batch acceptance still recommended |
 
 ## Why v0.3.0 is the current mainline
 
