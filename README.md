@@ -2,6 +2,14 @@
 
 项目代码按版本快照分目录保存。每个目录都是可独立查看的完整源码状态，不把不同阶段的新增实验脚本混在同一目录。
 
+## 单图推理效果
+
+以下是项目可视化脚本生成的单图示例，左上角显示预测类别和异常分数；仅作推理效果展示，不代表独立测试集指标。
+
+| 正常样例 | 脏污样例 | 脏污样例 |
+|---|---|---|
+| ![正常预测，分数 0.69](assets/inference-previews/normal-score-0.69.jpg) | ![脏污预测，分数 2.57](assets/inference-previews/dirty-score-2.57.jpg) | ![脏污预测，分数 1.77](assets/inference-previews/dirty-score-1.77.jpg) |
+
 | 版本 | 内容 | 代码快照 | 报告预览 |
 |---|---|---|---|
 | `v0.3.0` | RGB 基线 | [`versions/v0.3.0/`](versions/v0.3.0/) | [查看报告](versions/v0.3.0/report/rgb-baseline.png) |
