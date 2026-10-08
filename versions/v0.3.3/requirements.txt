@@ -1,0 +1,19 @@
+# SimpleNet 镜头脏污检测 —— 依赖清单
+# Python 3.8 环境（GPU 建议 CUDA 12.1，torch 版本需 >= 2.0 以支持 RTX 40 系列）
+
+torch==2.3.1+cu121
+torchvision==0.18.1+cu121
+numpy==1.24.4
+scikit-learn==1.3.2
+tqdm==4.70.1
+Pillow==10.4.0
+click>=8.0
+tensorboard>=2.14.0
+opencv-python>=4.8.0
+matplotlib>=3.7.0
+psutil>=5.9.0
+
+# 说明：
+# - torch/torchvision 建议从官方 CUDA 源安装（见 README）。
+# - opencv-python 用于可视化/实时演示（visualize.py / test_folder.py / realtime_demo.py / analyze_errors.py）。
+# - tensorboard 为 simplenet.py 的 SummaryWriter 所需。
