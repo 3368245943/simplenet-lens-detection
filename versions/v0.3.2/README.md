@@ -125,3 +125,14 @@ bash run_lens.sh
 
 - [SimpleNet (CVPR 2023)](https://github.com/DonaldRR/SimpleNet)
 - 本项目在其基础上适配自定义数据集并做内存优化（跳过像素级特征插值，避免 OOM）。
+
+## 测试报告预览
+
+### 双目预处理分析
+
+![Stereo preprocessing analysis](report/stereo-preprocessing-analysis.png)
+
+### 双目验证集分析
+
+![Stereo preprocessing validation](report/stereo-preprocessing-validation.png)
+
