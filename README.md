@@ -19,6 +19,7 @@
 | `v0.3.4` | 双目验证 | [`versions/v0.3.4/`](versions/v0.3.4/) | [查看报告](versions/v0.3.4/report/stereo-validation.png) |
 | `v0.3.5` | 双目聚合实验 | [`versions/v0.3.5/`](versions/v0.3.5/) | [查看报告](versions/v0.3.5/report/stereo-aggregation.png) |
 | `v0.3.6` | 全传感器候选评估 | [`versions/v0.3.6/`](versions/v0.3.6/) | [查看报告](versions/v0.3.6/report/all-sensors-large-test.png) |
+| `v0.3.7` | 清理数据集全传感器复测，新增交互式错误查看 | [`versions/v0.3.7/`](versions/v0.3.7/) | [查看报告](versions/v0.3.7/report/all-sensors-cleaned-reexport.png) |
 
 每个快照目录含该阶段完整的训练/推理代码、数据适配代码、依赖说明和版本 README。数据集、模型权重和运行结果不属于源码快照。
 
