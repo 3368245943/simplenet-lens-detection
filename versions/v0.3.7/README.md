@@ -12,7 +12,7 @@
 - `训练测试交接.md`：训练、校准、导出和评估步骤。
 - `与SimpleNet对比修改项.md`：数据适配及模型修改说明。
 
-本目录没有该复现版本的报告图、指标 JSON、checkpoint 或 ONNX 文件，不用旧版本评估结果冒充本版本结果。
+本目录保留上一版已有的评估图和 `metrics.json`，文件内容未改动；它们不是由本次 `v0.3.7_reproduce_cleaned_q95` 目录重新生成的结果，不能作为此复现快照中新训练模型的验收指标。checkpoint、ONNX 和机器专属配置不随源码发布。
 
 ## 安装
 
@@ -49,7 +49,13 @@ python3.8 -m venv venv
 
 再运行 `evaluate_candidate_all_sensors.py`，显式传入本机模型和数据集路径。交接文档中的阈值仅为该复现记录的示例；运行前需核验模型 metadata、阈值、采样设置及标签策略。
 
-## 验证限制
+## 保留的既有评估结果
+
+以下报告和指标文件从替换前的 `v0.3.7` 原样保留，指标整体 F1 为 `0.9310`。它们对应此前使用的模型/阈值，不是本目录复现流程刚刚生成的结果；请勿将其解读为新 q95 checkpoint 的独立验收结果。
+
+![Preserved previous all-sensor report](report/all-sensors-cleaned-reexport.png)
+
+机器可读指标：[`report/metrics.json`](report/metrics.json)。
 
 `calibrate_q95.py` 使用测试切分标签，通过 Youden J 选择 q95 计数阈值。因此这份测试切分参与了阈值校准，不能作为独立盲测结果。正式验收需要使用完全未参与训练、阈值校准或模型选择的新录制数据。
 

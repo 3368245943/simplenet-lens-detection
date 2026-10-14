@@ -1,0 +1,99 @@
+{
+  "model": "/home/bai/project/INDEMIND/深度数据/镜头脏污预警/simplenet-lens-detection/results/LensDirt_Results/stereo_aggregation/run/sensor_model_normal_q95_cleaned_reexport_opset11.onnx",
+  "sha256": "8aab56da968ee013aae4b012d2caea9f9596f7ca962c8f99be5cea47639ce906",
+  "metadata": {
+    "thresholds": "1.6450339555740356,147.0,2.686849355697632",
+    "stereo_aggregation": "normal_q95_count",
+    "preprocessing": "grayscale_3ch_resize_180x240_imagenet_normalize",
+    "sensor_ids": "0=rgb,1=stereo,2=tof"
+  },
+  "thresholds": {
+    "rgb": 1.6450339555740356,
+    "stereo": 147.0,
+    "tof": 2.686849355697632
+  },
+  "metadata_thresholds": {
+    "rgb": 1.6450339555740356,
+    "stereo": 147.0,
+    "tof": 2.686849355697632
+  },
+  "results": {
+    "rgb": {
+      "n": 4893,
+      "normal": 106,
+      "anomaly": 4787,
+      "auroc": 0.9833885799196724,
+      "pr_auc": 0.9996136709012066,
+      "confusion_matrix": [
+        [
+          96,
+          10
+        ],
+        [
+          203,
+          4584
+        ]
+      ],
+      "precision": 0.9978232477144101,
+      "recall": 0.9575934823480259,
+      "f1": 0.9772945314998401
+    },
+    "stereo": {
+      "n": 2333,
+      "normal": 58,
+      "anomaly": 2275,
+      "auroc": 0.9482493368700267,
+      "pr_auc": 0.9984982099366384,
+      "confusion_matrix": [
+        [
+          58,
+          0
+        ],
+        [
+          818,
+          1457
+        ]
+      ],
+      "precision": 1.0,
+      "recall": 0.6404395604395604,
+      "f1": 0.7808145766345124
+    },
+    "tof": {
+      "n": 2271,
+      "normal": 81,
+      "anomaly": 2190,
+      "auroc": 0.9672811319691076,
+      "pr_auc": 0.9987444168075381,
+      "confusion_matrix": [
+        [
+          77,
+          4
+        ],
+        [
+          161,
+          2029
+        ]
+      ],
+      "precision": 0.9980324643384161,
+      "recall": 0.9264840182648402,
+      "f1": 0.9609282500591997
+    }
+  },
+  "overall": {
+    "n": 9497,
+    "confusion_matrix": [
+      [
+        231,
+        14
+      ],
+      [
+        1182,
+        8070
+      ]
+    ],
+    "f1": 0.9310106137517306
+  },
+  "protocol": "Custom evaluation: datapath=/media/bai/D27A57537A573407/datatset/datasets, frame_stride=5, up to 100000 anomalies per sensor; thresholds configured in the script.",
+  "caveat": "Historical development data, not an independent acceptance test. No new validation split was created. Historical training/calibration overlap is not ruled out.",
+  "label_policy": "ToF poor-light positive-folder images remain normal; RGB/stereo poor light is anomalous."
+}
