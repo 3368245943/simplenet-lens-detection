@@ -15,7 +15,6 @@
     --ckpt       checkpoint 路径（默认用训练好的）
     --out        输出目录（默认 test_result）
     --threshold  判定阈值，缺省自动估算
-    --imagesize  模型输入尺寸（默认 224，与训练一致）
 """
 import os
 import sys
@@ -32,8 +31,11 @@ import backbones
 from datasets.lens_dirt import LensDirtDataset, DatasetSplit, IMAGENET_MEAN, IMAGENET_STD
 import simplenet
 
+# ToF 图像大小（与训练一致）：宽 240 x 高 180。
+IN_H, IN_W = 180, 240
 
-def build_model(device, imagesize=224):
+
+def build_model(device):
     backbone = backbones.load("wideresnet50")
     backbone.name = "wideresnet50"
     backbone.seed = None
@@ -42,7 +44,7 @@ def build_model(device, imagesize=224):
         backbone=backbone,
         layers_to_extract_from=["layer2", "layer3"],
         device=device,
-        input_shape=(3, imagesize, imagesize),
+        input_shape=(3, IN_H, IN_W),
         pretrain_embed_dimension=1536,
         target_embed_dimension=1536,
         patchsize=3,
@@ -111,7 +113,7 @@ def collect_images(folder):
 def estimate_threshold(net, datapath, transform, device):
     """用测试集正常/脏污各若干张的中值中点估算阈值。"""
     ds = LensDirtDataset(datapath, split=DatasetSplit.TEST,
-                         frames_per_segment=20, imagesize=224, resize=256, seed=0)
+                         frame_stride=5, seed=0)
     normal = [d[2] for d in ds.data_to_iterate if d[1] == "good"][:30]
     anomaly = [d[2] for d in ds.data_to_iterate if d[1] != "good"][:30]
     ns, as_ = [], []
@@ -137,7 +139,6 @@ def main():
                         default="./data")
     parser.add_argument("--out", type=str, default="test_result")
     parser.add_argument("--threshold", type=float, default=None)
-    parser.add_argument("--imagesize", type=int, default=224)
     parser.add_argument("--no_annotate", action="store_true",
                         help="只输出判定结果不保存标注图")
     args = parser.parse_args()
@@ -152,13 +153,13 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"[信息] 设备: {device}")
 
-    net = build_model(device, args.imagesize)
+    net = build_model(device)
     load_ckpt(net, args.ckpt)
 
     from torchvision import transforms
+    # 与训练一致：整图缩放到 ToF 尺寸 240x180（不裁不切），3 通道 RGB。
     transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(args.imagesize),
+        transforms.Resize((IN_H, IN_W)),
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])

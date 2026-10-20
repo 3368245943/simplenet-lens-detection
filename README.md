@@ -12,7 +12,7 @@
 
 | 版本 | 内容 | 代码快照 | 报告预览 |
 |---|---|---|---|
-| `v0.3.0` | RGB 基线 | [`versions/v0.3.0/`](versions/v0.3.0/) | [查看报告](versions/v0.3.0/report/rgb-baseline.png) |
+| `v0.3.0` | RGB 灰度 `240x180` 基线与 ONNX 导出 | [`versions/v0.3.0/`](versions/v0.3.0/) | [查看报告](versions/v0.3.0/report/balanced-sampling-full.png) |
 | `v0.3.1` | 多传感器训练、导出、推理、评估和阈值验证 | [`versions/v0.3.1/`](versions/v0.3.1/) | [开发集](versions/v0.3.1/report/sensor-heads-development.png) · [大样本](versions/v0.3.1/report/sensor-heads-large-test.png) |
 | `v0.3.2` | 双目预处理诊断 | [`versions/v0.3.2/`](versions/v0.3.2/) | [分析](versions/v0.3.2/report/stereo-preprocessing-analysis.png) · [验证](versions/v0.3.2/report/stereo-preprocessing-validation.png) |
 | `v0.3.3` | 双目续训对照 | [`versions/v0.3.3/`](versions/v0.3.3/) | [查看报告](versions/v0.3.3/report/stereo-finetune-comparison.png) |

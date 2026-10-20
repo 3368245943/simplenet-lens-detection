@@ -572,14 +572,15 @@ class SimpleNet(torch.nn.Module):
         features = []
         labels_gt = []
         masks_gt = []
-        from sklearn.manifold import TSNE
 
         with tqdm.tqdm(dataloader, desc="Inferring...", leave=False) as data_iterator:
             for data in data_iterator:
                 if isinstance(data, dict):
                     labels_gt.extend(data["is_anomaly"].numpy().tolist())
-                    if data.get("mask", None) is not None:
-                        masks_gt.extend(data["mask"].numpy().tolist())
+                    # 内存优化：本项目无像素级标注，不需要 masks_gt。
+                    # 原版 `masks_gt.extend(data["mask"].numpy().tolist())` 会把每张
+                    # (1,180,240) 的 mask 转成嵌套 list 累积，测试集大时内存爆炸（OOM）。
+                    # 故这里不累积 mask（labels_gt 已足够用于图像级 AUROC 评估）。
                     image = data["image"]
                     img_paths.extend(data['image_path'])
                 _scores, _masks, _feats = self._predict(image)

@@ -232,7 +232,9 @@ def net(
 @click.option("--batch_size", default=2, type=int, show_default=True)
 @click.option("--num_workers", default=2, type=int, show_default=True)
 @click.option("--resize", default=256, type=int, show_default=True)
-@click.option("--imagesize", default=224, type=int, show_default=True)
+# lens_dirt 数据集固定使用 ToF 尺寸 240x180（见 datasets/lens_dirt.py 的 CROP_H/CROP_W），
+# 此参数保留仅为兼容命令行，实际输入尺寸由数据集决定。
+@click.option("--imagesize", default=180, type=int, show_default=True)
 @click.option("--rotate_degrees", default=0, type=int)
 @click.option("--translate", default=0, type=float)
 @click.option("--scale", default=0.0, type=float)
@@ -245,6 +247,7 @@ def net(
 @click.option("--augment", is_flag=True)
 @click.option("--max_samples_per_class", type=int, default=None, show_default=True)
 @click.option("--frames_per_segment", type=int, default=None, show_default=True)
+@click.option("--frame_stride", type=int, default=20, show_default=True)
 def dataset(
     name,
     data_path,
@@ -266,6 +269,7 @@ def dataset(
     augment,
     max_samples_per_class,
     frames_per_segment,
+    frame_stride,
 ):
     dataset_info = _DATASETS[name]
     dataset_library = __import__(dataset_info[0], fromlist=[dataset_info[1]])
@@ -293,6 +297,7 @@ def dataset(
                 augment=augment,
                 max_samples_per_class=max_samples_per_class,
                 frames_per_segment=frames_per_segment,
+                frame_stride=frame_stride,
             )
 
             test_dataset = dataset_library.__dict__[dataset_info[1]](
@@ -304,6 +309,7 @@ def dataset(
                 seed=seed,
                 max_samples_per_class=max_samples_per_class,
                 frames_per_segment=frames_per_segment,
+                frame_stride=frame_stride,
             )
             
             LOGGER.info(f"Dataset: train={len(train_dataset)} test={len(test_dataset)}")

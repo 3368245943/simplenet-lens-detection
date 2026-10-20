@@ -12,6 +12,11 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
+# 统一输入尺寸 = ToF 图像大小（宽 240 x 高 180）。
+# 输入为 3 通道 RGB（宽高不相等，非方形），整图缩放到该尺寸，不裁不切。
+CROP_H = 180
+CROP_W = 240
+
 
 def _uniform_sample(items, k):
     """从列表中均匀抽取 k 个元素（保持顺序），k 大于列表长度时返回全部。"""
@@ -30,6 +35,60 @@ def _uniform_sample(items, k):
             seen.add(i)
             out.append(items[i])
     return out
+
+
+def _stride_sample(items, stride):
+    """按固定步长抽样：每隔 stride 帧取 1 帧（frames[::stride]）。
+
+    stride=20 表示「20 帧抽 1 张」。stride 为 None/<=0/>=len 时返回全部。
+    """
+    if stride is None or stride <= 1:
+        return items
+    return items[::stride]
+
+
+def _sample_equal_by_scene(items_by_scene):
+    """按场景等量抽样，目标数量取所有非空场景的最小值。"""
+    nonempty = [items for items in items_by_scene.values() if items]
+    if not nonempty:
+        return []
+    target = min(len(items) for items in nonempty)
+    sampled = []
+    for scene in sorted(items_by_scene):
+        sampled.extend(_uniform_sample(items_by_scene[scene], target))
+    return sampled
+
+
+def _preferred_segments(segment_dirs, prefer_second=True):
+    """每个 data_x 选择一个时间段，默认优先第二段（通常为运动状态）。"""
+    grouped = {}
+    for seg_dir in segment_dirs:
+        timestamp_dir = os.path.dirname(seg_dir)
+        data_dir = os.path.dirname(timestamp_dir)
+        grouped.setdefault(data_dir, []).append(seg_dir)
+
+    selected = []
+    for data_dir in sorted(grouped):
+        segs = sorted(grouped[data_dir], key=lambda p: os.path.basename(os.path.dirname(p)))
+        # 第二个时间目录通常对应运动状态；只有一个时回退到唯一目录。
+        if len(segs) >= 2 and prefer_second:
+            selected.append(segs[1])
+        else:
+            selected.append(segs[0])
+    return selected
+
+
+def _scene_of(path):
+    """从路径提取场景标签（正样本/负样本 之后的两级目录）。
+
+    例如 `.../正样本/室内/光照不良/data_0/...` -> `室内/光照不良`。
+    用于按场景分层切分训练/测试，避免某个场景整体落入测试集导致 domain 泄漏。
+    """
+    parts = path.split(os.sep)
+    for i, x in enumerate(parts):
+        if x in ("正样本", "负样本"):
+            return "/".join(parts[i + 1:i + 3])
+    return path
 
 
 class DatasetSplit(Enum):
@@ -51,7 +110,9 @@ class LensDirtDataset(torch.utils.data.Dataset):
                 <scene>/<lighting>/<data_x>/<timestamp>/cam0/*.jpg
 
     The RGB camera images are the ``*.jpg`` files living inside a ``cam0``
-    directory (depth / ``*.png`` / ``*.yaml`` files are ignored).
+    directory. 训练只使用 RGB（cam0）图像；以下目录会被排除：
+        - ``<timestamp>/ORIGIN/cam0``、``<timestamp>/ORIGIN/cam1``（原始帧序列）
+        - ``depth_data/``（tof / left / right / disp 等深度与双目数据）
 
     ``classname`` here is a single artificial class (``"lens"``) so the dataset
     plugs into the existing SimpleNet ``main.py`` dataset machinery.
@@ -79,7 +140,9 @@ class LensDirtDataset(torch.utils.data.Dataset):
         scale=0,
         max_samples_per_class=None,
         frames_per_segment=None,
+        frame_stride=5,
         normal_train_frac=0.7,
+        per_scene_train=None,
         seed=0,
         **kwargs,
     ):
@@ -91,34 +154,113 @@ class LensDirtDataset(torch.utils.data.Dataset):
         self.transform_std = IMAGENET_STD
         self.transform_mean = IMAGENET_MEAN
         self.frames_per_segment = frames_per_segment
+        # 每 frame_stride 帧抽 1 张（默认 20 帧抽 1 张）。
+        self.frame_stride = frame_stride
+        # 训练集每个场景的平均帧数（None=自动取各场景训练帧数的最小值）。
+        self.per_scene_train = per_scene_train
 
         # Collect normal / anomaly image paths (grouped by recording segment).
         normal_segments, anomaly_paths = self._collect_paths()
 
+        # ---- 只保留与负样本场景对齐的正常样本 ----
+        # 负样本（脏污图）只覆盖少数场景（毛毯、室内），而正样本（干净图）
+        # 额外包含黑墙/灰墙/泡沫棉/棋盘格等场景。这些"负样本里没有对应
+        # 脏污图"的场景若放进训练，会让模型学到无关的场景差异，反而干扰
+        # 对脏污的判断。因此训练/测试都只保留负样本中存在的场景。
+        anomaly_scenes = set(_scene_of(p) for p in anomaly_paths)
+        normal_segments = {
+            seg: frames
+            for seg, frames in normal_segments.items()
+            if _scene_of(seg) in anomaly_scenes
+        }
+
         # ---- 按"录制片段"切分正常样本，避免训练/测试数据泄漏 ----
-        # 70% 的片段用于训练，30% 的片段整体留作测试（片段内帧高度相似，
-        # 若同片段既训练又测试，AUROC 会虚高）。
+        # 关键：按场景（正样本/负样本 后两级目录）分层切分，保证每个场景
+        # 都有训练和测试片段。否则片段数少的场景（如「毛毯」只有 2 个片段）
+        # 会被纯随机切分整体分到测试集，训练集从未见过该场景，导致 AUROC 失效。
         import random
         rng = random.Random(seed)
         segments = sorted(normal_segments.keys())
-        rng.shuffle(segments)
-        n_train_seg = max(1, int(len(segments) * normal_train_frac))
-        train_segments = set(segments[:n_train_seg])
-        test_segments = set(segments[n_train_seg:])
+
+        # 按场景分组
+        scene_segments = {}
+        for seg in segments:
+            scene_segments.setdefault(_scene_of(seg), []).append(seg)
+
+        train_segments = set()
+        test_segments = set()
+        for scene, segs in scene_segments.items():
+            segs = sorted(segs)
+            rng.shuffle(segs)
+            # 测试实例使用静止段（第一时间目录）作为独立测试集，
+            # 不再把唯一选中的片段误分到训练集合。
+            if self.split == DatasetSplit.TEST:
+                test_segments.update(segs)
+                continue
+            # 训练实例使用运动段（第二时间目录），按场景划分训练片段。
+            if len(segs) == 1:
+                train_segments.update(segs)
+            else:
+                n_train = max(1, int(len(segs) * normal_train_frac))
+                n_train = min(n_train, len(segs) - 1)
+                train_segments.update(segs[:n_train])
+                test_segments.update(segs[n_train:])
 
         train_normal = []
         test_normal = []
+        # 收集各场景的训练帧，用于后续「每个场景平均」。
+        train_frames_by_scene = {}
         for seg in segments:
             frames = normal_segments[seg]
             # 过滤损坏/无法读取的图片（自动跳过）。
             frames = [p for p in frames if self._is_readable(p)]
             if seg in train_segments:
-                train_normal.extend(frames)
+                train_frames_by_scene.setdefault(_scene_of(seg), []).extend(frames)
             else:
                 test_normal.extend(frames)
 
-        # 过滤损坏的异常样本（自动跳过）。
+        # ---- 训练集按场景等量抽样 ----
+        if train_frames_by_scene:
+            available = [len(v) for v in train_frames_by_scene.values() if v]
+            target = self.per_scene_train
+            if target is None:
+                target = min(available) if available else 0
+            self.per_scene_train = target
+            for scene in sorted(train_frames_by_scene):
+                train_normal.extend(
+                    _uniform_sample(train_frames_by_scene[scene], target)
+                )
+
+        # 测试正常样本也按场景等量抽样，避免场景数量影响总 AUROC。
+        test_frames_by_scene = {}
+        for p in test_normal:
+            test_frames_by_scene.setdefault(_scene_of(p), []).append(p)
+        test_normal = _sample_equal_by_scene(test_frames_by_scene)
+
+        # 过滤损坏的异常样本（自动跳过），并按场景等量抽样。
         anomaly_paths = [p for p in anomaly_paths if self._is_readable(p)]
+        anomaly_by_scene = {}
+        for p in anomaly_paths:
+            anomaly_by_scene.setdefault(_scene_of(p), []).append(p)
+        anomaly_paths = _sample_equal_by_scene(anomaly_by_scene)
+
+        # 测试集正常/异常按相同的场景数和每场景样本数配对，
+        # 防止异常样本数量过大主导统计结果。
+        if self.split == DatasetSplit.TEST:
+            normal_by_scene = {}
+            for p in test_normal:
+                normal_by_scene.setdefault(_scene_of(p), []).append(p)
+            common_scenes = sorted(set(normal_by_scene) & set(anomaly_by_scene))
+            if common_scenes:
+                target = min(
+                    min(len(normal_by_scene[s]) for s in common_scenes),
+                    min(len(anomaly_by_scene[s]) for s in common_scenes),
+                )
+                test_normal = []
+                anomaly_paths = []
+                for scene in common_scenes:
+                    test_normal.extend(_uniform_sample(normal_by_scene[scene], target))
+                    anomaly_paths.extend(_uniform_sample(anomaly_by_scene[scene], target))
 
         if self.split == DatasetSplit.TRAIN:
             self.normal_paths = train_normal
@@ -141,7 +283,8 @@ class LensDirtDataset(torch.utils.data.Dataset):
 
         self.transform_img = transforms.Compose(
             [
-                transforms.Resize(resize),
+                # resize 方案：整图缩放到 ToF 尺寸 240x180（不裁不切，保留全部画面）
+                transforms.Resize((CROP_H, CROP_W)),
                 transforms.ColorJitter(
                     brightness_factor, contrast_factor, saturation_factor
                 ),
@@ -154,7 +297,6 @@ class LensDirtDataset(torch.utils.data.Dataset):
                     scale=(1.0 - scale, 1.0 + scale),
                     interpolation=transforms.InterpolationMode.BILINEAR,
                 ),
-                transforms.CenterCrop(imagesize),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
             ]
@@ -162,13 +304,12 @@ class LensDirtDataset(torch.utils.data.Dataset):
 
         self.transform_mask = transforms.Compose(
             [
-                transforms.Resize(resize),
-                transforms.CenterCrop(imagesize),
+                transforms.Resize((CROP_H, CROP_W)),
                 transforms.ToTensor(),
             ]
         )
 
-        self.imagesize = (3, imagesize, imagesize)
+        self.imagesize = (3, CROP_H, CROP_W)
 
     def _collect_paths(self):
         """返回 (normal_segments, anomaly_paths)。
@@ -187,17 +328,29 @@ class LensDirtDataset(torch.utils.data.Dataset):
             if not os.path.isdir(base):
                 continue
             # 每个 cam0 目录 = 一个独立录制片段（一段连续视频的抽帧）。
+            # 只用 RGB（cam0）训练：排除 ORIGIN/ 下的原始帧序列（cam0/cam1 原始图），
+            # 以及 depth_data/（tof/left/right/disp 等深度/双目数据）。
             segment_dirs = []
             for root, dirs, files in os.walk(base):
-                if os.path.basename(root) == "cam0":
-                    segment_dirs.append(root)
-            for seg_dir in sorted(segment_dirs):
+                if os.path.basename(root) != "cam0":
+                    continue
+                # 排除 ORIGIN 原始帧目录与 depth_data 深度目录（只留抽帧后的 RGB cam0）。
+                parts = root.split(os.sep)
+                if "ORIGIN" in parts or "depth_data" in parts:
+                    continue
+                segment_dirs.append(root)
+            for seg_dir in _preferred_segments(
+                sorted(segment_dirs),
+                prefer_second=(is_anomaly or self.split == DatasetSplit.TRAIN),
+            ):
                 frames = sorted(
                     f for f in os.listdir(seg_dir)
                     if f.lower().endswith((".jpg", ".jpeg", ".png"))
                 )
                 frames = [os.path.join(seg_dir, f) for f in frames]
-                # 按片段均匀抽样：每个录制片段最多保留 frames_per_segment 帧。
+                # 降采样：每 frame_stride 帧抽 1 张（20 帧抽 1 张）。
+                frames = _stride_sample(frames, self.frame_stride)
+                # 可选：每个录制片段再限制最多 frames_per_segment 帧（均匀抽样）。
                 if self.frames_per_segment is not None and self.frames_per_segment > 0:
                     frames = _uniform_sample(frames, self.frames_per_segment)
                 if is_anomaly:
@@ -222,11 +375,9 @@ class LensDirtDataset(torch.utils.data.Dataset):
         image = PIL.Image.open(image_path).convert("RGB")
         image = self.transform_img(image)
 
-        if self.split == DatasetSplit.TEST and mask_path is not None:
-            mask = PIL.Image.open(mask_path)
-            mask = self.transform_mask(mask)
-        else:
-            mask = torch.zeros([1, *image.size()[1:]])
+        # 本项目只做图像级二分类，无像素标注，不需要 mask。
+        # 返回标量占位（可被 DataLoader collate），避免每次生成 (1,180,240) zeros 拖慢。
+        mask = torch.tensor(0.0)
 
         return {
             "image": image,

@@ -28,8 +28,11 @@ import backbones
 from datasets.lens_dirt import LensDirtDataset, DatasetSplit, IMAGENET_MEAN, IMAGENET_STD
 import simplenet
 
+# ToF 图像大小（与训练一致）：宽 240 x 高 180。
+IN_H, IN_W = 180, 240
 
-def build_model(device, imagesize=224):
+
+def build_model(device):
     backbone = backbones.load("wideresnet50")
     backbone.name = "wideresnet50"
     backbone.seed = None
@@ -38,7 +41,7 @@ def build_model(device, imagesize=224):
         backbone=backbone,
         layers_to_extract_from=["layer2", "layer3"],
         device=device,
-        input_shape=(3, imagesize, imagesize),
+        input_shape=(3, IN_H, IN_W),
         pretrain_embed_dimension=1536,
         target_embed_dimension=1536,
         patchsize=3,
@@ -121,15 +124,15 @@ def main():
     load_ckpt(net, args.ckpt)
 
     from torchvision import transforms
+    # 与训练一致：整图缩放到 ToF 尺寸 240x180（不裁不切），3 通道 RGB。
     transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize((IN_H, IN_W)),
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])
 
     ds = LensDirtDataset(args.datapath, split=DatasetSplit.TEST,
-                         frames_per_segment=20, imagesize=224, resize=256, seed=0)
+                         frame_stride=5, seed=0)
     normal_paths = [d[2] for d in ds.data_to_iterate if d[1] == "good"]
     anomaly_paths = [d[2] for d in ds.data_to_iterate if d[1] != "good"]
 

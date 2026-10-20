@@ -2,15 +2,19 @@
 # SimpleNet 训练脚本 —— 镜头脏污/遮挡检测 (二分类异常检测)
 # 使用自定义数据集 datasets/lens_dirt.py，正样本=正常，负样本=脏污/遮挡。
 #
-# 收敛验证：每录制片段均匀抽 20 帧去冗余（121片段 → ~2400张），10 个 meta-epoch。
+# 输入为 3 通道 RGB，整图缩放到 ToF 图像大小 240x180（宽240 高180）。
+# 降采样：每 5 帧抽 1 张（--frame_stride 5，对齐负样本场景后训练样本更充足）。
+# 收敛验证：10 个 meta-epoch。
 # 实时进度条会显示在终端（tqdm），无需后台运行。
 
 set -e
 
 cd "$(dirname "$0")"
 
+# Python 解释器：默认用项目内 venv（首次使用见 README「环境」一节创建）。
 PYTHON=${PYTHON:-./venv/bin/python}
-# 数据集路径：默认取项目内 data 目录，也可用环境变量覆盖：
+# 数据集路径：默认取项目内 data 目录（推荐把数据放这里或建软链）。
+# 换机器/换路径时，只需改这一行，或用环境变量覆盖：
 #   DATAPATH=/path/to/data bash run_lens.sh
 DATAPATH=${DATAPATH:-./data}
 
@@ -43,7 +47,5 @@ exec $PYTHON -u main.py \
   dataset \
   --batch_size 4 \
   --num_workers 0 \
-  --resize 256 \
-  --imagesize 224 \
-  --frames_per_segment 20 \
+  --frame_stride 5 \
   -d $CLASS lens_dirt $DATAPATH

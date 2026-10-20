@@ -28,8 +28,11 @@ import backbones
 from datasets.lens_dirt import LensDirtDataset, DatasetSplit, IMAGENET_MEAN, IMAGENET_STD
 import simplenet
 
+# ToF 图像大小（与训练一致）：宽 240 x 高 180。
+IN_H, IN_W = 180, 240
 
-def build_model(device, imagesize=224):
+
+def build_model(device):
     """按 run_lens.sh 的参数重建 SimpleNet 模型结构。"""
     backbone = backbones.load("wideresnet50")
     backbone.name = "wideresnet50"
@@ -39,7 +42,7 @@ def build_model(device, imagesize=224):
         backbone=backbone,
         layers_to_extract_from=["layer2", "layer3"],
         device=device,
-        input_shape=(3, imagesize, imagesize),
+        input_shape=(3, IN_H, IN_W),
         pretrain_embed_dimension=1536,
         target_embed_dimension=1536,
         patchsize=3,
@@ -121,7 +124,6 @@ def main():
                         help="指定单张图片或文件夹；缺省则从测试集抽样")
     parser.add_argument("--n", type=int, default=8, help="每类抽样图片数")
     parser.add_argument("--out", type=str, default="visualization")
-    parser.add_argument("--imagesize", type=int, default=224)
     parser.add_argument("--threshold", type=float, default=None,
                         help="判定阈值；缺省自动取正常/脏污分数均值中点")
     args = parser.parse_args()
@@ -134,13 +136,13 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(f"[信息] 设备: {device}")
 
-    net = build_model(device, args.imagesize)
+    net = build_model(device)
     load_ckpt(net, args.ckpt)
 
     from torchvision import transforms
+    # 与训练一致：整图缩放到 ToF 尺寸 240x180（不裁不切），3 通道 RGB。
     transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(args.imagesize),
+        transforms.Resize((IN_H, IN_W)),
         transforms.ToTensor(),
         transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ])
@@ -150,8 +152,7 @@ def main():
     # 判定阈值：默认用正常/脏污各抽一批的中值中点；用户也可手动指定
     if args.input is None:
         ds = LensDirtDataset(args.datapath, split=DatasetSplit.TEST,
-                             frames_per_segment=20, imagesize=args.imagesize,
-                             resize=256, seed=0)
+                             frame_stride=5, seed=0)
         normal_paths = [d[2] for d in ds.data_to_iterate if d[1] == "good"]
         anomaly_paths = [d[2] for d in ds.data_to_iterate if d[1] != "good"]
 
@@ -188,8 +189,7 @@ def main():
         if args.threshold is None:
             # 用户指定输入但没给阈值时，仍按测试集估算
             ds = LensDirtDataset(args.datapath, split=DatasetSplit.TEST,
-                                 frames_per_segment=20, imagesize=args.imagesize,
-                                 resize=256, seed=0)
+                                 frame_stride=5, seed=0)
             normal_paths = [d[2] for d in ds.data_to_iterate if d[1] == "good"]
             anomaly_paths = [d[2] for d in ds.data_to_iterate if d[1] != "good"]
             ns, as_ = [], []

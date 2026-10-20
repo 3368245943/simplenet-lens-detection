@@ -1,132 +1,65 @@
-# SimpleNet 镜头脏污检测
+# SimpleNet 镜头脏污检测 — v0.3.0
 
-基于 [SimpleNet](https://openaccess.thecvf.com/content/CVPR2023/papers/Liu_SimpleNet_A_Simple_Network_for_Image_Anomaly_Detection_and_Localization_CVPR_2023_paper.pdf)（CVPR 2023）的**无监督镜头脏污/遮挡检测**。
+本目录由 `simplenet-lens-detection1.1/simplenet-lens-detection` 整理而成，是 `v0.3.0` 的完整源码快照。该版本采用灰度图整图缩放到 `240x180`，复制为三通道后输入 WideResNet-50，训练入口为 `run_lens.sh`。
 
-只做**场景级二分类**：判断镜头画面是否「脏污 / 被遮挡」，不定位具体位置与类型。训练只用正常（干净）样本。
+## 版本内容
 
----
+- `run_lens.sh` / `main.py`：SimpleNet 训练入口。
+- `datasets/lens_dirt.py`：镜头脏污数据读取、按录制片段切分和抽帧。
+- `export_onnx.py`：导出 ONNX 模型。
+- `test_folder.py`：文件夹批量推理。
+- `realtime_demo.py`：实时逐帧演示。
+- `visualize.py`：推理结果可视化。
+- `test_report.py` / `analyze_errors.py`：指标报告和误检分析。
+- `测试报告.md`：该阶段的实验说明与指标。
 
-## 一、功能
+数据集、虚拟环境、checkpoint、ONNX、TensorBoard 日志和批量可视化图片没有上传。训练结果表和报告图体积较小，保留在 `report/` 中。
 
-| 脚本 | 作用 |
-|---|---|
-| `run_lens.sh` | 训练（无监督，只学正常样本） |
-| `visualize.py` | 抽样可视化，图片上标注「正常/脏污」+ 分数 |
-| `test_folder.py` | 批量测试一个图片文件夹，输出标注图 + 统计 |
-| `realtime_demo.py` | 实时逐帧演示（OpenCV 窗口，按 q 退出） |
-| `test_report.py` | 生成分类测试统计图（混淆矩阵 + 指标 + 分数分布） |
-| `analyze_errors.py` | 客观定位误检样本（按场景/光照分组统计 + 复制误检图） |
+## 环境
 
----
-
-## 二、环境
-
-- Python **3.8**
-- PyTorch **2.3.1 + cu121**（RTX 40 系列需 torch ≥ 2.0）
-- GPU 显存要求低（batch_size=4、输入 224×224，实测峰值内存约 5GB）
-
-安装：
+建议 Python 3.8、PyTorch 2.3.1 和 torchvision 0.18.1：
 
 ```bash
-# 1. 创建虚拟环境（任选其一）
 python3.8 -m venv venv
-# 或用 uv:  uv venv --python 3.8 venv
-
-# 2. 安装 torch（CUDA 12.1）
 ./venv/bin/pip install torch==2.3.1+cu121 torchvision==0.18.1+cu121 \
   --extra-index-url https://download.pytorch.org/whl/cu121
-
-# 3. 安装其余依赖
 ./venv/bin/pip install -r requirements.txt
 ```
 
----
+## 数据结构
 
-## 三、数据集准备
-
-数据集放在项目根目录的 `data/` 下，结构如下（正样本=正常，负样本=脏污/遮挡）：
-
-```
+```text
 data/
-  正样本/                          # 正常（干净）图
+  正样本/
     <场景>/<光照>/<data_x>/<时间戳>/cam0/*.jpg
-  负样本/                          # 脏污/遮挡图
+  负样本/
     <场景>/<光照>/<脏污类型>/<程度>/<data_x>/<时间戳>/cam0/*.jpg
 ```
 
-- 只使用 `cam0` 目录下的 RGB 图片（忽略 cam1 / depth / tof）。
-- 每个 `cam0` 目录 = 一个录制片段，训练/测试按**片段**切分（7:3），避免数据泄漏。
+该版本只使用 RGB `cam0` 图片，并按录制片段划分训练和测试，避免相邻帧同时进入两侧。
 
-> 数据路径可通过环境变量覆盖：`DATAPATH=/path/to/data bash run_lens.sh`；各 Python 脚本用 `--datapath` 指定。
-
----
-
-## 四、训练
+## 训练
 
 ```bash
-bash run_lens.sh
+DATAPATH=/path/to/data bash run_lens.sh
 ```
 
-- 训练输出到 `results/`，checkpoint 保存 AUROC 最高的 epoch。
-- 终端实时显示 tqdm 进度条。
+主要设置：输入 `240x180`、灰度复制三通道、每 5 帧抽 1 张、batch size 4、10 个 meta epoch、4 个 GAN epoch。
 
----
-
-## 五、推理 / 可视化
+## ONNX 导出
 
 ```bash
-# 1. 抽样可视化
-./venv/bin/python visualize.py --n 8
-
-# 2. 批量测试文件夹
-./venv/bin/python test_folder.py --input ./data/负样本/.../cam0
-
-# 3. 实时逐帧演示
-./venv/bin/python realtime_demo.py --input ./data/负样本/.../cam0 --fps 15
-
-# 4. 生成分类统计图
-./venv/bin/python test_report.py
-
-# 5. 误检分析
-./venv/bin/python analyze_errors.py
+./venv/bin/python export_onnx.py \
+  --ckpt /path/to/ckpt.pth \
+  --out /path/to/model.onnx
 ```
 
----
+具体参数以 `export_onnx.py --help` 为准。模型文件不进入源码仓库。
 
-## 六、测试结果（详见 `测试报告.md`）
+## 报告
 
-| 指标 | 值 |
-|---|---|
-| 图像级 AUROC | **0.741** |
-| 准确率 / 精确率 / 召回率 / F1 | 0.705 / 0.744 / 0.625 / 0.679 |
+![v0.3.0 balanced sampling report](report/balanced-sampling-full.png)
 
-误检主要集中在**极端光照**场景（光照不良 49.5%、强光 34.5%、关灯 35%），正常光照误检率仅 0~15%。
+训练结果表：[`report/training-results.csv`](report/training-results.csv)。详细分析见 [`测试报告.md`](测试报告.md)。
 
----
-
-## 七、目录结构
-
-```
-.
-├── main.py              # 训练入口
-├── simplenet.py         # SimpleNet 模型（含内存优化）
-├── backbones.py / resnet.py / common.py / metrics.py / utils.py
-├── datasets/
-│   └── lens_dirt.py     # 自定义数据集适配（按片段切分、去冗余）
-├── run_lens.sh          # 训练脚本
-├── visualize.py / test_folder.py / realtime_demo.py / test_report.py / analyze_errors.py
-├── requirements.txt
-└── 测试报告.md
-```
-
----
-
-## 致谢
-
-- [SimpleNet (CVPR 2023)](https://github.com/DonaldRR/SimpleNet)
-- 本项目在其基础上适配自定义数据集并做内存优化（跳过像素级特征插值，避免 OOM）。
-
-## 测试报告预览
-
-![RGB baseline report](report/rgb-baseline.png)
-
+> `测试报告.md` 中部分早期环境描述与本快照后续的 `240x180` 灰度输入配置可能不完全一致；复现代码时以 `run_lens.sh` 和 `datasets/lens_dirt.py` 为准。
